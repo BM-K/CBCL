@@ -9,3 +9,4 @@ To Do
 expriments
 - nli = proposed1
 - sts p1 16/4 + cl
+- nli -> sqrt(dk), mask
