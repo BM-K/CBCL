@@ -2,7 +2,7 @@
 Continual Learning Sentence BERT
 
 To Do
-- cl upgrade
+- ewc
 - additional layer
 - senteval
 
