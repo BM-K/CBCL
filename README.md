@@ -7,6 +7,10 @@ To Do
 - senteval
 
 expriments
-- nli = proposed1
-- sts p1 16/4 + cl
-- nli -> sqrt(dk), mask
+- nli <br>
+-- sqrt <br>
+-- nosqrt <br>
+-- base <br>
+- sts <br>
+-- sq, nosq, base <br>
+-- attn u v <br>
