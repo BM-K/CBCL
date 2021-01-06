@@ -14,3 +14,4 @@ expriments
 - sts <br>
 -- sq, nosq, base <br>
 -- attn u v <br>
+-- base chat <br>
