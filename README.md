@@ -2,16 +2,7 @@
 Continual Learning Sentence BERT
 
 To Do
+- base model
+- beam
 - ewc
-- additional layer
-- senteval
-
-expriments
-- nli <br>
--- sqrt <br>
--- nosqrt <br>
--- base <br>
-- sts <br>
--- sq, nosq, base <br>
--- attn u v <br>
--- base chat <br>
+- ARPER
