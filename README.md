@@ -2,7 +2,8 @@
 Continual Learning Sentence BERT
 
 To Do
-- base model
-- beam
+- --base model--
+- --beam--
+- change data
 - ewc
 - ARPER
