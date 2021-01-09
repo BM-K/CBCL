@@ -1,5 +1,5 @@
-# ContinualLearningSBERT
-Continual Learning Sentence BERT
+# ContinualLearning
+Continual Learning 
 
 To Do
 - --base model--
