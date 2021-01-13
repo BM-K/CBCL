@@ -1,5 +1,6 @@
 # ContinualLearning
-Continual Learning 
+Continual Learning
+bert en, transformers de
 
 To Do
 - ~base model~
