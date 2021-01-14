@@ -7,5 +7,5 @@ To Do
 - ~beam~
 - ~bleu~
 - minibatch eval
-- ewc
+- ~~ewc~~
 - ~ARPER~
