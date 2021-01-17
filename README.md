@@ -9,3 +9,4 @@ To Do
 - minibatch eval
 - ~~ewc~~
 - ~ARPER~
+- splited data
