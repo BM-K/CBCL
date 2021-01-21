@@ -1,23 +1,17 @@
 import torch
 import logging
-from konlpy.tag import Mecab
 from CBCL.beam import Beam
 from CBCL.utils import get_segment_ids_vaild_len, gen_attention_mask, move_to_device
 import nltk.translate.bleu_score as bleu
-from chatspace import ChatSpace
+#from chatspace import ChatSpace
 from tqdm import tqdm
-
-# The skt-kobert tokenizer is used to evaluate korean model's performance
-import gluonnlp as nlp
-from kobert.utils import get_tokenizer
-from kobert.pytorch_kobert import get_pytorch_kobert_model
 
 logger = logging.getLogger(__name__)
 
 
 class Evaluation:
     def __init__(self, args, opt):
-        self.spacer = ChatSpace()
+        #self.spacer = ChatSpace()
         self.args = args
         self.opt = opt
 
@@ -58,12 +52,19 @@ class Evaluation:
 
             src = gold_data['src'][idx]
             tgt = []
+            src = gold_data['src'][idx]
             src = self.tokenize(src, type='source')
             tgt = self.tokenize(tgt, type='target')
 
+            segment_ids, valid_len = get_segment_ids_vaild_len(src, self.opt['dataloader'].pad_token_idx, self.args)
+            attention_mask = gen_attention_mask(src, valid_len)
+            bert_opt = {'segment_ids': segment_ids,
+                        'inputs': src,
+                        'attention_mask': attention_mask}
+
             for i in range(self.args.max_len):
                 pred = []
-                y_pred, _ = model(src, tgt)
+                y_pred = model(bert_opt, tgt, self.opt)
                 y_pred_ids = y_pred.max(dim=-1)[1]
                 next_word = y_pred_ids.data[i]
                 next_symbol = next_word.item()
@@ -75,7 +76,7 @@ class Evaluation:
                             pred = list([pred[x].numpy().tolist() for x in range(len(pred))])
                             pred = self.bert_tokenizer.convert_ids_to_tokens(pred)
                             pred_sentence = "".join(pred).replace('_', ' ')
-                            greedy_hypothesis.append(self.spacer.space(pred_sentence))
+                            greedy_hypothesis.append(pred_sentence)#self.spacer.space(pred_sentence))
                             break
                         else:pred.append(y_pred_ids[idx])
 
@@ -110,6 +111,12 @@ class Evaluation:
                 src = torch.cat([src, src], dim=0)
             src = src[:beam_size, :]
 
+            segment_ids, valid_len = get_segment_ids_vaild_len(src, self.opt['dataloader'].pad_token_idx, self.args)
+            attention_mask = gen_attention_mask(src, valid_len)
+            bert_opt = {'segment_ids': segment_ids,
+                        'inputs': src,
+                        'attention_mask': attention_mask}
+
             for i in range(self.args.max_len):
 
                 # finish to search
@@ -117,14 +124,14 @@ class Evaluation:
                     max_score_idx = beam.finished_beam_score.index(max(beam.finished_beam_score))
                     result = beam.next_ys[max_score_idx]
                     result_sen = self.bert_tokenizer.convert_ids_to_tokens(result.data.tolist())
-                    beam_hypothesis.append(self.spacer.space(''.join(result_sen[1:]).replace(self.eos_token, '')))
+                    beam_hypothesis.append(''.join(result_sen[1:]).replace(self.eos_token, '').replace('_', ' '))#self.spacer.space(''.join(result_sen[1:]).replace(self.eos_token, '')))
                     break
 
                 # search
                 if i == 0:
                     new_inputs = beam.get_current_state().unsqueeze(1)
 
-                decoder_outputs, _ = model(src, new_inputs.to(self.args.device))
+                decoder_outputs = model(bert_opt, new_inputs.to(self.args.device), self.opt)
                 new_inputs = move_to_device(beam.advance(decoder_outputs.squeeze(1), cur_idx=i),
                                             self.args.device)
 
@@ -137,7 +144,7 @@ class Evaluation:
                         max_score_idx = beam.finished_beam_score.index(max(beam.finished_beam_score))
                         result = beam.next_ys[max_score_idx]
                         result_sen = self.bert_tokenizer.convert_ids_to_tokens(result.squeeze(0).data.tolist())
-                        beam_hypothesis.append(self.spacer.space(''.join(result_sen[1:]).replace(self.eos_token, '')))
+                        beam_hypothesis.append(''.join(result_sen[1:]).replace(self.eos_token, '').replace('_', ' '))#self.spacer.space(''.join(result_sen[1:]).replace(self.eos_token, '')))
                         break
                     else:
                         beam_hypothesis.append('-1')
@@ -161,7 +168,7 @@ class Evaluation:
 
             for line in lines:
                 data = line.split('\t')
-                token = ' '.join(self.bert_tokenizer(data[1].strip()))
+                token = ' '.join(self.bert_tokenizer.tokenize(data[1].strip()))
                 greedy_hypothesis_list.append(token)
 
         with open(beam_path, 'r', encoding='utf-8') as f:
@@ -169,11 +176,11 @@ class Evaluation:
 
             for line in lines:
                 data = line.split('\t')
-                token = ' '.join(self.bert_tokenizer(data[1].strip()))
+                token = ' '.join(self.bert_tokenizer.tokenize(data[1].strip()))
                 beam_hypothesis_list.append(token)
 
         for idx in range(len(references)):
-            token = ' '.join(self.bert_tokenizer(references[idx].strip()))
+            token = ' '.join(self.bert_tokenizer.tokenize(references[idx].strip()))
             references_list.append(token)
 
         # Calculate BLEU Score

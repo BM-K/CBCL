@@ -2,10 +2,10 @@ import torch
 import copy
 import torch.nn as nn
 from torch import Tensor
-from CBCL.utils import concat_pad
 from apex import amp
 import logging
 from CBCL.utils import move_to_device
+from CBCL.utils import concat_pad, get_lr, cal_acc, epoch_time, get_segment_ids_vaild_len, gen_attention_mask, do_well_train
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class EWC(nn.Module):
         self.args = args
         self.opt = opt
 
-        self.params = {n: p for n, p in self.model.named_parameters() if p.required_grad}
+        self.params = {n: p for n, p in self.model.named_parameters() if p.requires_grad}
         self._means = {}
         self._precision_matrices = self._diag_fisher()
 
@@ -31,29 +31,36 @@ class EWC(nn.Module):
             precision_matrices[n] = p.data
 
         self.model.eval()
-        for step, batch in enumerate(self.opt['arper_loader']):  # exemplar data loader로 바꿔야함
+        for step, batch in enumerate(self.opt['arper_loader']):
 
             self.model.zero_grad()
 
             input_sentence = batch.source
-            #tt = [self.opt['arper_loader'].stoi[token] for token in input_sentence[0]]
-
             decoder_sentence = batch.target
             target_sentence = copy.deepcopy(decoder_sentence)
-            target_sentence = concat_pad(self.args, target_sentence, self.opt)
+            target_sentence = concat_pad(target_sentence, torch.tensor([self.opt['dataloader'].pad_token_idx]).to(self.args.device))
 
-            outputs, _ = self.model(input_sentence, decoder_sentence)
+            segment_ids, valid_len = get_segment_ids_vaild_len(input_sentence, self.opt['dataloader'].pad_token_idx,
+                                                               self.args)
+            attention_mask = gen_attention_mask(input_sentence, valid_len)
+            bert_opt = {'segment_ids': segment_ids,
+                        'inputs': input_sentence,
+                        'attention_mask': attention_mask}
+
+            outputs = self.model(bert_opt, decoder_sentence, self.opt)
             loss = self.opt['criterion'](outputs, target_sentence.view(-1))
 
-            if self.args.fp16:
+            if self.args.fp16 == 'True':
                 with amp.scale_loss(loss, self.opt['optimizer']) as scaled_loss:
                     scaled_loss.backward()
             else:
                 loss.backward()
 
             for n, p in self.model.named_parameters():
-                precision_matrices[n].data += p.grad.data ** 2 / len(self.opt['arper_vocab'].stoi)
-
+                try:
+                    precision_matrices[n].data += p.grad.data ** 2 / self.opt['arper_data_len']
+                except AttributeError:
+                    continue
         precision_matrices = {n: p for n, p in precision_matrices.items()}
         return precision_matrices
 
@@ -78,7 +85,7 @@ class ARPER:
         self.dataInexemplars = {}
         self.total_number_of_data = []
 
-        self.vocab_size = 0
+        # self.vocab_size = 0
 
     def reducing_exemplars(self):
         logger.info("Reduce previous exemplars data to current data")
@@ -136,20 +143,27 @@ class ARPER:
 
     def exemplar(self):
         logger.info("Get exemplar data on current task")
+
         with torch.no_grad():
             for step, batch in enumerate(self.opt['train_loader']):
+
                 input_sentence = batch.source
                 decoder_sentence = batch.target
                 target_sentence = copy.deepcopy(decoder_sentence)
+                target_sentence = concat_pad(target_sentence,torch.tensor([self.opt['dataloader'].pad_token_idx]).to(self.args.device))
 
-                target_sentence = concat_pad(self.args, target_sentence, self.opt)
+                segment_ids, valid_len = get_segment_ids_vaild_len(input_sentence, self.opt['dataloader'].pad_token_idx, self.args)
+                attention_mask = gen_attention_mask(input_sentence, valid_len)
+                bert_opt = {'segment_ids': segment_ids,
+                            'inputs': input_sentence,
+                            'attention_mask': attention_mask}
 
-                outputs, _ = self.model(input_sentence, decoder_sentence)
+                outputs = self.model(bert_opt, decoder_sentence, self.opt)
 
                 loss = self.opt['criterion'](outputs, target_sentence.view(-1))
                 self.priority_scores.append([loss])
 
-        self.vocab_size = len(self.opt['src_vocab'].vocab.stoi)
+        #self.vocab_size = len(self.opt['src_vocab'].vocab.stoi)
         self.priority_list = self.priority_scores
 
     def get_priority_data(self):
@@ -169,6 +183,7 @@ class ARPER:
                 # except tensor -> ex) [tensor[8.972], '느낌이 왔어\t사랑의 느낌이길 바라요.\n']
                 # -> ['느낌이 왔어\t사랑의 느낌이길 바라요.\n']
                 w.write(self.priority_list[idx][1])
-        with open(exemplar_config_path, 'w', encoding='utf-8-sig') as w:
-            sentence = self.args.train_data.split('.')[0]+"_exemplar's vocab size \t" + str(self.vocab_size)
-            w.write(sentence)
+
+        #with open(exemplar_config_path, 'w', encoding='utf-8-sig') as w:
+        #    sentence = self.args.train_data.split('.')[0]+"_exemplar's vocab size \t" + str(self.vocab_size)
+        #    w.write(sentence)

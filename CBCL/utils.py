@@ -1,9 +1,9 @@
 import torch
 import logging
 from torch import Tensor
-from chatspace import ChatSpace
+#from chatspace import ChatSpace
 
-spacer = ChatSpace()
+#spacer = ChatSpace()
 logger = logging.getLogger(__name__)
 
 
@@ -30,8 +30,9 @@ def move_to_device(sample, device):
 
 
 def get_lr(optimizer):
-    for param_group in optimizer.param_groups:
-        return param_group['lr']
+    return optimizer.state_dict()['param_groups'][0]['lr']
+    #for param_group in optimizer.param_groups:
+    #    return param_group['lr']
 
 
 def cal_acc(yhat: 'model_output', y: 'label', padding_idx) -> Tensor:
@@ -59,21 +60,16 @@ def do_well_train(inputs, target, outputs, obj):
     target_sentence_list = obj['tokenizer'].convert_ids_to_tokens(target[0])
     output_sentence_list = obj['tokenizer'].convert_ids_to_tokens(outputs)
 
-    input = ''.join(inputs_sentence_list).replace(pad_token, '').replace('_', ' ')
-    target = ''.join(target_sentence_list).replace(pad_token, '').replace(eos_token, '').replace('_', ' ')
+    input = ''.join(inputs_sentence_list[1:]).replace(pad_token, '').replace('_', ' ')
+    target = ''.join(target_sentence_list[1:]).replace(pad_token, '').replace(eos_token, '').replace('_', ' ')
     output = ''.join(output_sentence_list).replace(pad_token, '').replace('_', ' ')
 
-    output_idx = outputs.find(eos_token)
+    output_idx = output.find(eos_token)
     output = output[:output_idx]
 
     print("input> ", input, "\n")
     print("refer> ", target, "\n")
     print(f"outputs> ", output)
-    print("----------------------------------------------------")
-    exit()
-    print("input> ", spacer.space(input), "\n")
-    print("refer> ", spacer.space(target), "\n")
-    print(f"outputs> ", spacer.space(output))
     print("----------------------------------------------------")
 
 

@@ -11,8 +11,8 @@ def set_args() -> argparse:
     parser = argparse.ArgumentParser()
 
     # model hyperparameters
-    parser.add_argument('--d_model', type=int, default=512)
-    parser.add_argument('--feedforward', type=int, default=1024)
+    parser.add_argument('--d_model', type=int, default=768)
+    parser.add_argument('--feedforward', type=int, default=2048)
     parser.add_argument('--n_heads', type=int, default=4)
     parser.add_argument('--n_layers', type=int, default=4)
     parser.add_argument('--dropout', type=int, default=0.1)
@@ -20,12 +20,23 @@ def set_args() -> argparse:
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--patience', type=int, default=5)
-    parser.add_argument('--seed', type=int, default=2222)
-    parser.add_argument('--lr', type=float, default=0.00001)
+    parser.add_argument('--seed', type=int, default=1234)
+    parser.add_argument('--lr', type=float, default=0.00002)
     parser.add_argument('--beam_size', type=int, default=5)
     #parser.add_argument('--warmup_step', type=float, default=0.1)
 
     # ARPER parser
+    # Get exemplar data on current data set
+    """
+    After training current model
+    args.APRER == 'True'
+    args.data_shuffle == 'False'
+    args.batch_size and args.epochs == 1
+    """
+    # Make new data including previous exemplar data and current data
+    """
+    args.ARPER == 'True' and args.exemplars is not None
+    """
     parser.add_argument('--arper_train', type=str, default='False')
     parser.add_argument('--exemplars', type=str, default=None)
     parser.add_argument('--exemplars_vocab_size', type=int, default=0)
@@ -42,7 +53,7 @@ def set_args() -> argparse:
 
     # fp16
     parser.add_argument('--opt_level', type=str, default='O1')
-    parser.add_argument('--fp16', type=str, default='True')
+    parser.add_argument('--fp16', type=str, default='False')
 
     # Data loader parser
     parser.add_argument('--data_shuffle', type=str, default='True')

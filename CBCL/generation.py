@@ -2,10 +2,10 @@ import torch
 import logging
 from CBCL.beam import Beam
 from CBCL.utils import get_segment_ids_vaild_len, gen_attention_mask, move_to_device
-from chatspace import ChatSpace
+#from chatspace import ChatSpace
 
 
-spacer = ChatSpace()
+#spacer = ChatSpace()
 logger = logging.getLogger(__name__)
 
 
@@ -41,7 +41,7 @@ def greedy_search(model, opt, tokens, target):
 
     for i in range(opt['args'].max_len):
 
-        y_pred, _ = model(tokens, target)
+        y_pred = model(tokens, target)
         y_pred_ids = y_pred.max(dim=-1)[1]
         next_word = y_pred_ids.data[i]
         next_symbol = next_word.item()
@@ -54,7 +54,7 @@ def greedy_search(model, opt, tokens, target):
                     pred = opt['tokenizer'].convert_ids_to_tokens(pred)
                     #pred = [opt['tgt_vocab'].vocab.itos[token] for token in pred]
                     pred_sentence = "".join(pred).replace('_', ' ')
-                    print("Greedy Result >> ", spacer.space(pred_sentence))
+                    print("Greedy Result >> ", pred_sentence)#spacer.space(pred_sentence))
                     break
                 else:pred.append(y_pred_ids[idx])
             break
@@ -83,13 +83,14 @@ def beam_search(model, opt, tokens):
             result = beam.next_ys[max_score_idx]
             #result_sen = [opt['tgt_vocab'].vocab.itos[token] for token in result.data.tolist()]
             result_sen = opt['tokenizer'].convert_ids_to_tokens(result.data.tolist())
-            print(f"Beam Result >> {spacer.space(''.join(result_sen[1:]).replace(opt['dataloader'].eos_token, ''))}")
+            #print(f"Beam Result >> {spacer.space(''.join(result_sen[1:]).replace(opt['dataloader'].eos_token, ''))}")
+            print(f"Beam Result >> {''.join(result_sen[1:]).replace(opt['dataloader'].eos_token, '')}")
             break
 
         # search
         if i == 0:
             new_inputs = beam.get_current_state().unsqueeze(1)
 
-        decoder_outputs, _ = model(tokens, new_inputs.to(opt['args'].device))
+        decoder_outputs = model(tokens, new_inputs.to(opt['args'].device))
         new_inputs = move_to_device(beam.advance(decoder_outputs.squeeze(1), cur_idx=i),
                                     opt['args'].device)

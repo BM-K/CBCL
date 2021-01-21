@@ -26,18 +26,19 @@ def system_setting():
     return args
 
 
-def train(model: nn.Module, objectives, args, lambda_base=0.5) -> (Tensor, Tensor):
+def train(model: nn.Module, objectives, args, lambda_base=100000) -> (Tensor, Tensor):
     total_loss = 0
     iter_num = 0
     train_ppl = 0
 
     if objectives['args'].arper_train == 'True':
         logger.info("Training EWC")
-        adaptive_regularization = lambda_base * math.log(
-            args.exemplars_vocab_size / objectives['model'].bert.model.config.vocab_size)
+
+        adaptive_regularization = lambda_base# * math.sqrt(
+            #args.exemplars_vocab_size * args.number_of_exemplars / objectives['model'].bert.model.config.vocab_size)
 
         objectives['arper_loader'] = objectives['dataloader'].train_loader_arper
-        objectives['arper_vocab'] = objectives['dataloader'].src_arper.vocab
+        objectives['arper_data_len'] = len(objectives['dataloader'].train_data_arper)
         ewc = EWC(args, objectives, model)
 
     logger.info("Training main")
@@ -58,7 +59,7 @@ def train(model: nn.Module, objectives, args, lambda_base=0.5) -> (Tensor, Tenso
                     'inputs': input_sentence,
                     'attention_mask': attention_mask}
 
-        outputs, _ = model(bert_opt, decoder_sentence, objectives)
+        outputs = model(bert_opt, decoder_sentence, objectives)
 
         # outputs : [batch x max_len , vocab_size]
         # target_sentence.view(-1) : [batch x max_len]
@@ -68,9 +69,9 @@ def train(model: nn.Module, objectives, args, lambda_base=0.5) -> (Tensor, Tenso
             ewc_loss = adaptive_regularization * ewc.penalty(model)
             loss += ewc_loss
 
-        if args.fp16:
+        if args.fp16 == 'True':
             with amp.scale_loss(loss, objectives['optimizer']) as scaled_loss : scaled_loss.backward()
-        else : loss.backward()
+        else: loss.backward()
 
         objectives['optimizer'].step()
         # objectives['scheduler'].step()
@@ -79,7 +80,6 @@ def train(model: nn.Module, objectives, args, lambda_base=0.5) -> (Tensor, Tenso
         iter_num += 1
 
         train_ppl += math.exp(loss)
-        do_well_train(input_sentence, decoder_sentence, outputs, objectives)
 
     return total_loss.data.cpu().numpy() / iter_num, train_ppl / iter_num
 
@@ -98,7 +98,7 @@ def valid(model: nn.Module, objectives, args) -> (Tensor, Tensor):
             target_sentence = copy.deepcopy(decoder_sentence)
 
             # remove [CLS] token
-            target_sentence = concat_pad(args, target_sentence, objectives)
+            target_sentence = concat_pad(target_sentence, torch.tensor([objectives['dataloader'].pad_token_idx]).to(args.device))
 
             segment_ids, valid_len = get_segment_ids_vaild_len(input_sentence, objectives['dataloader'].pad_token_idx,                                               args)
             attention_mask = gen_attention_mask(input_sentence, valid_len)
@@ -106,7 +106,7 @@ def valid(model: nn.Module, objectives, args) -> (Tensor, Tensor):
                         'inputs': input_sentence,
                         'attention_mask': attention_mask}
 
-            outputs, _ = model(bert_opt, decoder_sentence, objectives)
+            outputs = model(bert_opt, decoder_sentence, objectives)
 
             loss = objectives['criterion'](outputs, target_sentence.view(-1))
             do_well_train(input_sentence, decoder_sentence, outputs, objectives)
@@ -136,7 +136,7 @@ def test(model: nn.Module, objectives, args) -> (Tensor, Tensor):
             target_sentence = copy.deepcopy(decoder_sentence)
 
             # remove [CLS] token
-            target_sentence = concat_pad(args, target_sentence, objectives)
+            target_sentence = concat_pad(target_sentence, torch.tensor([objectives['dataloader'].pad_token_idx]).to(args.device))
 
             segment_ids, valid_len = get_segment_ids_vaild_len(input_sentence, objectives['dataloader'].pad_token_idx,                                               args)
             attention_mask = gen_attention_mask(input_sentence, valid_len)
@@ -144,7 +144,7 @@ def test(model: nn.Module, objectives, args) -> (Tensor, Tensor):
                         'inputs': input_sentence,
                         'attention_mask': attention_mask}
 
-            outputs, _ = model(bert_opt, decoder_sentence, objectives)
+            outputs = model(bert_opt, decoder_sentence, objectives)
 
             loss = objectives['criterion'](outputs, target_sentence.view(-1))
             do_well_train(input_sentence, decoder_sentence, outputs, objectives)
@@ -163,7 +163,7 @@ def main() -> None:
 
     dataloader = DataLoader(args)
 
-    model = Transformer(args)
+    model = Transformer(args, dataloader)
     criterion = get_loss_func(dataloader.pad_token_idx)
     optimizer = get_optim(args, model)
     #scheduler = get_scheduler(optimizer, args, dataloader.train_loader)
@@ -223,12 +223,12 @@ def main() -> None:
             print(f'\t==Epoch: {epoch + 1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s==')
             print(f'\t==Train Loss: {train_loss:.3f} | Train ppl: {train_ppl:.3f}==')
             print(f'\t==Valid Loss: {valid_loss:.3f} | Valid ppl: {valid_ppl:.3f}==')
-            print(f'\t==Epoch latest LR: {get_lr(optimizer):.9f}==\n')
+            print(f'\t==Epoch latest LR: {get_lr(objectives["optimizer"]):.9f}==\n')
 
     if args.test_ == 'True':
         logger.info("Start Test")
 
-        model = Transformer(args, dataloader.src_vocab, dataloader.tgt_vocab)
+        model = Transformer(args, dataloader)
         optimizer = get_optim(args, model)
         model.to(args.device)
 
@@ -262,7 +262,7 @@ def main() -> None:
     if args.inference == 'True':
         logger.info("Start Inference")
 
-        model = Transformer(args, dataloader.src_vocab, dataloader.tgt_vocab)
+        model = Transformer(args, dataloader)
         optimizer = get_optim(args, model)
         model.to(args.device)
 
@@ -276,7 +276,7 @@ def main() -> None:
 
     if args.eval == 'True':
 
-        model = Transformer(args, dataloader.src_vocab, dataloader.tgt_vocab)
+        model = Transformer(args, dataloader)
         optimizer = get_optim(args, model)
         model.to(args.device)
 

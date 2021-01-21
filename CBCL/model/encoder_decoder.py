@@ -4,6 +4,9 @@ import math
 from transformers import BertModel, BertConfig
 import numpy as np
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class PositionalEncoding(nn.Module):
 
@@ -50,15 +53,11 @@ class ScaledDotProductAttention(nn.Module):
         self.d_k = int(args.d_model / args.n_heads)
 
     def forward(self, Q, K, V, attn_mask):
-        scores = torch.matmul(Q, K.transpose(-1, -2)) / np.sqrt(
-            self.d_k)  # scores : [batch_size x n_heads x len_q(=len_k) x len_k(=len_q)
-
-        if attn_mask is None:
-            attn = nn.Softmax(dim=-1)(scores)
-            context = torch.matmul(attn, V)
-            return context, attn
+        scores = torch.matmul(Q, K.transpose(-1, -2)) / np.sqrt(self.d_k)
+        # scores : [batch_size x n_heads x len_q(=len_k) x len_k(=len_q)
         scores.masked_fill_(attn_mask, -1e9)
         # padding 부분을 -1000000 처럼 큰 음수값을 할당하여 softmax 후 해당 값을 0으로 나오게 만들어야함.
+
         attn = nn.Softmax(dim=-1)(scores)
         context = torch.matmul(attn, V)
         return context, attn
@@ -134,11 +133,11 @@ class DecoderLayer(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, args, vo_size):
+    def __init__(self, args, vocab_size):
         super(Decoder, self).__init__()
         self.args = args
         self.layers = nn.ModuleList([DecoderLayer(args) for _ in range(args.n_layers)])
-        self.vocab_embedding = nn.Embedding(vo_size, args.d_model)
+        self.vocab_embedding = nn.Embedding(vocab_size, args.d_model)
         self.pos_embedding = PositionalEncoding(args.d_model, args.max_len)
 
     def forward(self, enc_inputs, dec_inputs, enc_outputs, data_loader):  # dec_inputs : [batch_size x target_len]
@@ -167,33 +166,39 @@ class ETRI_KOBERT(nn.Module):
         self.args = args
         # self.li1 = nn.Linear(768, args.embedding_dim)
         self.model = BertModel.from_pretrained("./ETRI_KoBERT/003_bert_eojeol_pytorch")
+        self.dropout = nn.Dropout(p=args.dropout)
 
     def forward(self, opt):
         logits, _ = self.model(input_ids=opt['inputs'],
                                token_type_ids=opt['segment_ids'],
                                attention_mask=opt['attention_mask'])
         # top_vec = self.li1(top_vec)
-        return logits.to(self.args.device)
+        return logits.to(self.args.device)#self.dropout(logits.to(self.args.device))
 
 
 class Transformer(nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, opt):
         super(Transformer, self).__init__()
+        self.special_tokens_length = len(opt.special_tokens_dict)
         self.bert = ETRI_KOBERT(args)
-        self.bert_config = BertConfig(self.bert.model.config.vocab_size, hidden_size=args.d_model,
-                                 num_hidden_layers=args.n_layers, num_attention_heads=args.n_heads)
+
+        self.vocab_size = self.bert.model.config.vocab_size + self.special_tokens_length
+        self.bert_config = BertConfig(self.vocab_size,
+                                      hidden_size=args.d_model,
+                                      num_hidden_layers=args.n_heads,
+                                      num_attention_heads=args.n_layers)
         self.bert.model = BertModel(self.bert_config)
+        logger.info(self.bert.model.config)
 
         self.args = args
         self.dropout = args.dropout
 
-        self.decoder = Decoder(args, self.bert.model.config.vocab_size)
-        self.projection = nn.Linear(args.d_model, self.bert.model.config.vocab_size, bias=False)
+        self.decoder = Decoder(args, self.vocab_size)
+        self.projection = nn.Linear(args.d_model, self.vocab_size, bias=False)
 
     def forward(self, bert_opt, de_input, obj):
         bert_logits = self.bert(bert_opt)
         dec_outputs = self.decoder(bert_opt['inputs'], de_input, bert_logits, obj['dataloader'])
         dec_logits = self.projection(dec_outputs)
-        print(dec_logits.size())
-        exit()
+
         return dec_logits.view(-1, dec_logits.size(-1))
